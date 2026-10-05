@@ -1,5 +1,4 @@
 import {
-  CombinedAutocompleteProvider,
   Editor,
   ProcessTerminal,
   ScrollView,
@@ -26,7 +25,11 @@ import {
 } from "./transcript.js";
 import { StatusBar } from "./status-bar.js";
 import { showPermissionDialog } from "./permission-dialog.js";
-import { executeSlashCommand, SLASH_COMMAND_NAMES, type SlashContext } from "./slash.js";
+import {
+  executeSlashCommand,
+  createSlashAutocompleteProvider,
+  type SlashContext,
+} from "./slash.js";
 
 export interface TuiAppDeps {
   models: ModelRegistry;
@@ -106,13 +109,7 @@ export class TuiApp implements SlashContext {
     }
 
     // Slash-command autocomplete.
-    this.editor.setAutocompleteProvider(
-      new CombinedAutocompleteProvider(
-        SLASH_COMMAND_NAMES.map((name) => ({ name: name!, description: "" })),
-        this.deps.projectRoot,
-        null,
-      ),
-    );
+    this.editor.setAutocompleteProvider(createSlashAutocompleteProvider(this.deps.projectRoot));
 
     this.deps.permissions.setPrompt((request) => showPermissionDialog(this.tui, request));
     this.runtimeImport.agent.subscribe(async (event: AgentEvent) => this.handleAgentEvent(event));

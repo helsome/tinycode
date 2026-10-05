@@ -4,6 +4,7 @@ import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import { TranscriptView } from "../src/tui/transcript.js";
 import { StatusBar } from "../src/tui/status-bar.js";
 import { formatToolStart, formatToolResultLines } from "../src/tui/tool-view.js";
+import { createSlashAutocompleteProvider } from "../src/tui/slash.js";
 
 function plain(lines: string[]): string {
   return lines.map((line) => stripTerminalSequences(line)).join("\n");
@@ -155,5 +156,41 @@ describe("SelectList (permission dialog mechanics)", () => {
     expect(rendered).toContain("Allow once");
     expect(rendered).toContain("Always allow this pattern");
     expect(rendered).toContain("Deny");
+  });
+});
+
+describe("slash-command autocomplete", () => {
+  it("completes a command without doubling the leading slash", async () => {
+    const provider = createSlashAutocompleteProvider(process.cwd());
+    const signal = new AbortController().signal;
+
+    // Typing "/he" suggests help.
+    const suggestions = await provider.getSuggestions(["/he"], 0, 3, { signal });
+    expect(suggestions).not.toBeNull();
+    const help = suggestions!.items.find((item) => item.value === "help");
+    expect(help).toBeDefined();
+
+    // The picker shows "/help"; the inserted value stays un-slashed because
+    // pi-tui's applyCompletion prepends "/" itself.
+    expect(help!.label).toBe("/help");
+
+    // Regression: completing used to rewrite the line as "//help".
+    const applied = provider.applyCompletion(["/he"], 0, 3, help!, suggestions!.prefix);
+    expect(applied.lines[0]).toBe("/help ");
+    expect(applied.lines[0]!.startsWith("//")).toBe(false);
+  });
+
+  it("lists every command with a slashed label but a plain value", async () => {
+    const provider = createSlashAutocompleteProvider(process.cwd());
+    const signal = new AbortController().signal;
+
+    const all = await provider.getSuggestions(["/"], 0, 1, { signal });
+    expect(all).not.toBeNull();
+    expect(all!.items.map((item) => item.value)).toEqual(
+      expect.arrayContaining(["help", "new", "exit", "model", "status"]),
+    );
+    expect(all!.items.map((item) => item.label)).toEqual(
+      expect.arrayContaining(["/help", "/new", "/exit", "/model", "/status"]),
+    );
   });
 });

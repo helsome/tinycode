@@ -1,3 +1,4 @@
+import { CombinedAutocompleteProvider, type AutocompleteProvider } from "@earendil-works/pi-tui";
 import type { ModelRegistry } from "../model/registry.js";
 import type { McpManager } from "../mcp/manager.js";
 import type { PermissionManager } from "../permissions/manager.js";
@@ -157,3 +158,38 @@ export async function executeSlashCommand(rawInput: string, ctx: SlashContext): 
 }
 
 export const SLASH_COMMAND_NAMES = HELP_LINES.map((line) => line.split(/\s+/)[0]!);
+
+/**
+ * Build the editor's slash-command autocomplete provider.
+ *
+ * pi-tui applies completions by prepending "/" itself, so the value inserted
+ * into the editor must NOT carry the leading slash — a slashed value would
+ * rewrite "/he" as "//help". The label shown in the picker keeps the "/" so
+ * the menu reads like real commands (/help, /new, …).
+ */
+export function createSlashAutocompleteProvider(projectRoot: string): AutocompleteProvider {
+  const inner = new CombinedAutocompleteProvider(
+    SLASH_COMMAND_NAMES.map((name) => ({ name: name.replace(/^\//, ""), description: "" })),
+    projectRoot,
+    null,
+  );
+  return {
+    async getSuggestions(lines, cursorLine, cursorCol, options) {
+      const suggestions = await inner.getSuggestions(lines, cursorLine, cursorCol, options);
+      if (!suggestions) return null;
+      const textBeforeCursor = (lines[cursorLine] ?? "").slice(0, cursorCol);
+      const isCommandNameContext =
+        !options.force &&
+        textBeforeCursor.startsWith("/") &&
+        !textBeforeCursor.includes(" ");
+      if (!isCommandNameContext) return suggestions;
+      // Display "/help" while inserting "help" (pi-tui adds the slash back).
+      return {
+        items: suggestions.items.map((item) => ({ ...item, label: `/${item.value}` })),
+        prefix: suggestions.prefix,
+      };
+    },
+    applyCompletion: (lines, cursorLine, cursorCol, item, prefix) =>
+      inner.applyCompletion(lines, cursorLine, cursorCol, item, prefix),
+  };
+}
